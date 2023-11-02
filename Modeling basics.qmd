@@ -1,0 +1,348 @@
+---
+title: "Modeling_basics"
+format: html
+editor: visual
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+1 + 1
+```
+
+You can add options to executable code like this
+
+```{r}
+#| echo: false
+2 * 2
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
+
+### Ames Housing data
+
+The tidy models book uses a dataset describing housing characteristics in Ames Iowa. The dataset has been modified a bit to make ot more useful in the tudyverse. The new form of the data is packaged in a package called modeldata. We can import that in the following code.
+
+```{r}
+
+library(modeldata) # This is also loaded by the tidymodels package
+data(ames)
+
+# or, in one line:
+#data(ames, package = "modeldata")
+
+dim(ames)
+#> [1] 2930   74
+
+View(ames)
+
+
+```
+
+## 4.1 EXPLORING FEATURES OF HOMES IN AMES
+
+Let's start our exploratory data analysis by focusing on the outcome we want to predict: the last sale price of the house (in USD). We can create a histogram to see the distribution of sale prices.
+
+```{r}
+
+library(tidymodels)
+tidymodels_prefer()
+
+```
+
+```{r}
+
+ggplot(ames, aes(x = Sale_Price)) + 
+  geom_histogram(bins = 50, fill="forestgreen", col= "white")
+```
+
+This plot shows us that the data are right-skewed; there are more inexpensive houses than expensive ones. The median sale price was \$160,000, and the most expensive house was \$755,000. When modeling this outcome, a strong argument can be made that the price should be log-transformed. The advantages of this type of transformation are that no houses would be predicted with negative sale prices and that errors in predicting expensive houses will not have an undue influence on the model. Also, from a statistical perspective, a logarithmic transform may also stabilize the variance in a way that makes inference more legitimate. We can use similar steps to now visualize the transformed data.
+
+```{r}
+ggplot(ames, aes(x = Sale_Price)) + 
+  geom_histogram(bins = 50, fill = "red", col= "white") +
+  scale_x_log10()
+```
+
+Despite some drawbacks, the models used in this book use the log transformation for this outcome. *From this point on*, the outcome column is prelogged in the `ames` data frame:
+
+```{r}
+#converting price to log scale
+
+ames <- ames %>% mutate(Sale_Price = log10(Sale_Price))
+```
+
+Another important aspect of these data for our modeling is their geographic locations. This spatial information is contained in the data in two ways: a qualitative `Neighborhood` label as well as quantitative longitude and latitude data. To visualize the spatial information, let's use both together to plot the data on a map.
+
+The maps show some location patterns that might affect the modeling process (see book for details).
+
+As described in Chapter [1](https://www.tmwr.org/software-modeling#software-modeling), it is critical to conduct exploratory data analysis prior to beginning any modeling. These housing data have characteristics that present interesting challenges about how the data should be processed and modeled. We describe many of these in later chapters. Some basic questions that could be examined during this exploratory stage include:
+
+-   Is there anything odd or noticeable about the distributions of the individual predictors? Is there much skewness or any pathological distributions?
+
+-   Are there high correlations between predictors? For example, there are multiple predictors related to house size. Are some redundant?
+
+-   Are there associations between predictors and the outcomes?
+
+Many of these questions will be revisited as these data are used throughout this book.
+
+### Splitting the data
+
+```{r}
+
+
+# Set the random number stream using `set.seed()` so that the results can be 
+# reproduced later. 
+set.seed(501)
+
+# Save the split information for an 80/20 split of the data.  80% training 20 testing.
+ames_split <- initial_split(ames, prop = 0.80)
+ames_split
+#> <Training/Testing/Total>
+#> <2344/586/2930>
+```
+
+The printed information denotes the amount of data in the training set (n=2,344=2,344), the amount in the test set (n=586=586), and the size of the original pool of samples (n=2,930=2,930).
+
+The object `ames_split` is an `rsplit` object and contains only the partitioning information; to get the resulting data sets, we apply two more functions - training() and testing().
+
+```{r}
+
+ames_train <- training(ames_split)
+ames_test  <-  testing(ames_split)
+
+dim(ames_train)
+#> [1] 2344   74
+
+dim(ames_test)
+```
+
+These objects are data frames with the same columns as the original data but only the appropriate rows for each set.
+
+As discussed in Chapter [4](https://www.tmwr.org/ames#ames), the sale price distribution is right-skewed, with proportionally more inexpensive houses than expensive houses on either side of the center of the distribution. The worry here with simple splitting is that the more expensive houses would not be well represented in the training set; this would increase the risk that our model would be ineffective at predicting the price for such properties. The dotted vertical lines in Figure [5.1](https://www.tmwr.org/splitting#fig:ames-sale-price) indicate the four quartiles for these data. A stratified random sample would conduct the 80/20 split within each of these data subsets and then pool the results. In **rsample**, this is achieved using the `strata` argument:
+
+```{r}
+set.seed(502)
+ames_split <- initial_split(ames, prop = 0.80, strata = Sale_Price)
+ames_train <- training(ames_split)
+ames_test  <-  testing(ames_split)
+
+dim(ames_train)
+#> [1] 2342   74
+```
+
+Can also split into three sets. Training, testing and validation. Using the initial_validation_split function. The validation set is used as an interim test set as the model is developed while still retaining the test set for final testing of the model. This is covered more in Ch 10.
+
+# 6 Fitting Models with parsnip
+
+The **parsnip** package, one of the R packages that are part of the **tidymodels** metapackage, provides a fluent and standardized interface for a variety of different models. In this chapter, we give some motivation for why a common interface is beneficial for understanding and building models in practice and show how to use the **parsnip** package.
+
+Specifically, we will focus on how to `fit()` and `predict()` directly with a **parsnip** object, which may be a good fit for some straightforward modeling problems. The next chapter illustrates a better approach for many modeling tasks by combining models and preprocessors together into something called a `workflow` object.
+
+For tidymodels, the approach to specifying a model is intended to be more unified:
+
+1.  *Specify the type of model based on its mathematical structure* (e.g., linear regression, random forest, KNN, etc).
+
+2.  *Specify the engine for fitting the model.* Most often this reflects the software package that should be used, like Stan or **glmnet**. These are models in their own right, and **parsnip** provides consistent interfaces by using these as engines for modeling.
+
+3.  *When required, declare the mode of the model.* The mode reflects the type of prediction outcome. For numeric outcomes, the mode is regression; for qualitative outcomes, it is classification.^[14](https://www.tmwr.org/models#fn14)^ If a model algorithm can only address one type of prediction outcome, such as linear regression, the mode is already set.
+
+These specifications are built without referencing the data. For example, for the three cases we outlined:
+
+```{r}
+#library(tidymodels)
+#tidymodels_prefer()
+
+linear_reg() %>% set_engine("lm")
+#> Linear Regression Model Specification (regression)
+#> 
+#> Computational engine: lm
+
+linear_reg() %>% set_engine("glmnet") 
+#> Linear Regression Model Specification (regression)
+#> 
+#> Computational engine: glmnet
+
+linear_reg() %>% set_engine("stan")
+#> Linear Regression Model Specification (regression)
+#> 
+#> Computational engine: stan
+```
+
+Once the details of the model have been specified, the model estimation can be done with either the `fit()` function (to use a formula) or the `fit_xy()` function (when your data are already pre-processed). The **parsnip** package allows the user to be indifferent to the interface of the underlying model; you can always use a formula even if the modeling package's function only has the `x`/`y` interface.
+
+The `translate()` function can provide details on how **parsnip** converts the user's code to the package's syntax:
+
+```{r}
+linear_reg() %>% set_engine("lm") %>% translate()
+#> Linear Regression Model Specification (regression)
+#> 
+#> Computational engine: lm 
+#> 
+#> Model fit template:
+#> stats::lm(formula = missing_arg(), data = missing_arg(), weights = missing_arg())
+
+linear_reg(penalty = 1) %>% set_engine("glmnet") %>% translate()
+#> Linear Regression Model Specification (regression)
+#> 
+#> Main Arguments:
+#>   penalty = 1
+#> 
+#> Computational engine: glmnet 
+#> 
+#> Model fit template:
+#> glmnet::glmnet(x = missing_arg(), y = missing_arg(), weights = missing_arg(), 
+#>     family = "gaussian")
+
+linear_reg() %>% set_engine("stan") %>% translate()
+#> Linear Regression Model Specification (regression)
+#> 
+#> Computational engine: stan 
+#> 
+#> Model fit template:
+#> rstanarm::stan_glm(formula = missing_arg(), data = missing_arg(), 
+#>     weights = missing_arg(), family = stats::gaussian, refresh = 0)
+```
+
+Note that `missing_arg()` is just a placeholder for the data that has yet to be provided.
+
+Let's walk through how to predict the sale price of houses in the Ames data as a function of only longitude and latitude:
+
+```{r}
+lm_model <- 
+  linear_reg() %>% 
+  set_engine("lm")
+
+lm_form_fit <- 
+  lm_model %>% 
+  # Recall that Sale_Price has been pre-logged
+  fit(Sale_Price ~ Longitude + Latitude, data = ames_train)
+
+lm_xy_fit <- 
+  lm_model %>% 
+  fit_xy(
+    x = ames_train %>% select(Longitude, Latitude),
+    y = ames_train %>% pull(Sale_Price)
+  )
+
+lm_form_fit
+#> parsnip model object
+#> 
+#> 
+#> Call:
+#> stats::lm(formula = Sale_Price ~ Longitude + Latitude, data = data)
+#> 
+#> Coefficients:
+#> (Intercept)    Longitude     Latitude  
+#>     -302.97        -2.07         2.71
+lm_xy_fit
+#> parsnip model object
+#> 
+#> 
+#> Call:
+#> stats::lm(formula = ..y ~ ., data = data)
+#> 
+#> Coefficients:
+#> (Intercept)    Longitude     Latitude  
+#>     -302.97        -2.07         2.71
+```
+
+## 6.2 USE THE MODEL RESULTS
+
+Once the model is created and fit, we can use the results in a variety of ways; we might want to plot, print, or otherwise examine the model output. Several quantities are stored in a **parsnip** model object, including the fitted model. This can be found in an element called `fit`, which can be returned using the `extract_fit_engine()` function:
+
+```{r}
+lm_form_fit %>% extract_fit_engine()
+#> 
+#> Call:
+#> stats::lm(formula = Sale_Price ~ Longitude + Latitude, data = data)
+#> 
+#> Coefficients:
+#> (Intercept)    Longitude     Latitude  
+#>     -302.97        -2.07         2.71
+```
+
+Normal methods can be applied to this object, such as printing and plotting:
+
+```{r}
+lm_form_fit %>% extract_fit_engine() %>% vcov()
+#>             (Intercept) Longitude Latitude
+#> (Intercept)     207.311   1.57466 -1.42397
+#> Longitude         1.575   0.01655 -0.00060
+#> Latitude         -1.424  -0.00060  0.03254
+```
+
+```{r}
+?vcov
+```
+
+Aside: what is vcov?
+
+vcov: Description
+
+Returns the variance-covariance matrix of the main parameters of a fitted model object. The "main" parameters of model correspond to those returned by [`coef`](https://c1f420f6fbba408a93be2a08c16fc196.app.posit.cloud/help/library/stats/help/coef)`.`
+
+#### Using the broom package to tidy the output
+
+The **broom** package can convert many types of model objects to a tidy structure. For example, using the `tidy()` method on the linear model produces:
+
+```{r}
+tidy(lm_form_fit)
+#> # A tibble: 3 × 5
+#>   term        estimate std.error statistic  p.value
+#>   <chr>          <dbl>     <dbl>     <dbl>    <dbl>
+#> 1 (Intercept)  -303.      14.4       -21.0 3.64e-90
+#> 2 Longitude      -2.07     0.129     -16.1 1.40e-55
+#> 3 Latitude        2.71     0.180      15.0 9.29e-49
+```
+
+The column names are standardized across models and do not contain any additional data (such as the type of statistical test). The data previously contained in the row names are now in a column called `term`. One important principle in the tidymodels ecosystem is that a function should return values that are *predictable, consistent,* and *unsurprising*.
+
+## 6.3 MAKE PREDICTIONS
+
+Another area where **parsnip** diverges from conventional R modeling functions is the format of values returned from `predict()`. For predictions, **parsnip** always conforms to the following rules:
+
+1.  The results are always a tibble.
+
+2.  The column names of the tibble are always predictable.
+
+3.  There are always as many rows in the tibble as there are in the input data set.
+
+For example, when numeric data are predicted:
+
+```{r}
+ames_test_small <- ames_test %>% slice(1:5)
+predict(lm_form_fit, new_data = ames_test_small)
+#> # A tibble: 5 × 1
+#>   .pred
+#>   <dbl>
+#> 1  5.22
+#> 2  5.21
+#> 3  5.28
+#> 4  5.27
+#> 5  5.28
+```
+
+These three rules make it easier to merge predictions with the original data:
+
+```{r}
+ames_test_small %>% 
+  select(Sale_Price) %>% 
+  bind_cols(predict(lm_form_fit, ames_test_small)) %>% 
+  # Add 95% prediction intervals to the results:
+  bind_cols(predict(lm_form_fit, ames_test_small, type = "pred_int")) 
+#> # A tibble: 5 × 4
+#>   Sale_Price .pred .pred_lower .pred_upper
+#>        <dbl> <dbl>       <dbl>       <dbl>
+#> 1       5.02  5.22        4.91        5.54
+#> 2       5.39  5.21        4.90        5.53
+#> 3       5.28  5.28        4.97        5.60
+#> 4       5.28  5.27        4.96        5.59
+#> 5       5.28  5.28        4.97        5.60
+```
