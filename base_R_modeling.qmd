@@ -262,7 +262,7 @@ tidy(corr_res[[1]])
 #> 1   -0.852     -8.92 6.11e-10        30   -0.926    -0.716 Pearson's pr… two.sided
 ```
 
-These results can be \"stacked\" and added to a `ggplot()`.
+These results can be "stacked" and added to a `ggplot()`.
 
 (I'm not sure what stacked means)
 
