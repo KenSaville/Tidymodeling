@@ -1,0 +1,281 @@
+---
+title: "2_baseR_modeling"
+format: html
+editor: visual
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+# 3 A Review of R Modeling Fundamentals
+
+```{r}
+install.packages("modeldata")
+```
+
+```{r}
+
+library(tidyverse)
+
+data(crickets, package = "modeldata")
+names(crickets)
+
+```
+
+```{r}
+head(crickets)
+```
+
+```{r}
+
+
+# Plot the temperature on the x-axis, the chirp rate on the y-axis. The plot
+# elements will be colored differently for each species:
+ggplot(crickets, 
+       aes(x = temp, y = rate, color = species, pch = species, lty =         species)) + 
+# Plot points for each data point and color by species
+# color is 'mapped' to species.  pch means plot character (point type), lty means line type.  All are mapped to species so that each species has a different representation.
+  
+        geom_point(size = 2) + #this just gives the size of all points
+  
+  # Show a simple linear model fit created separately for each species:
+  geom_smooth(method = lm, se = FALSE, alpha = 0.5) + 
+  scale_color_brewer(palette = "Paired") +
+  labs(x = "Temperature (C)", y = "Chirp Rate (per minute)")
+```
+
+Geom_smooth is a general function for modeling data.
+
+The type of model used in this example is lm. Othe options are
+
+`"lm"`, `"glm"`, `"gam"`, `"loess"`
+
+**lm function in R:**
+
+The `lm` command takes the variables in the format:
+
+`lm([target] ~ [predictor / features], data = [data source])`
+
+above we've applied this within geom_smooth, so the results are plotted immediately.
+
+To see how lm works we can just run the lm function on the data. In thi case we would use
+
+lm(rate \~ temp, data = crickets. Let's try it
+
+```{r}
+summary(lm(rate ~ temp, data = crickets))
+```
+
+The results give the y intercept and the slope for temp. To demonstrate this use the abline() which draws a line using the intercept and slope. First make a blank plot, then add the abline function. This is a weird thing to do, but I was just trying to see if I could make a plot using just the slope and intercet.
+
+abline(a=intercept, b=slope)
+
+```{r}
+plot(NULL,ylim=c(-100,100),xlim=c(-100,100))
+abline(a=-27.948,b= 4.243) # a= slope, b= intercept (see docs for other options)
+
+
+```
+
+Now let's make a basic plot using just the x, y function then add an abline
+
+```{r}
+plot(crickets$temp, crickets$rate)
+abline(-27.498, 4.243 )
+# again - a weird thing to do, but I'm just breaking down what lm does.  so this is what lm does.  It creates a best fit line and adds it to the data. 
+
+```
+
+We can get more info out of the lm function by saving the results to a variable, then getting a summary.
+
+```{r}
+model <- lm(rate ~ temp, crickets)
+summary(model)
+```
+
+This gives additional information for the model such as residuals, R squared, F-statistic etc. The tidymodel book goes more into these later (I think).
+
+Can add things to the model call
+
+-   *In-line* functions can be used in the formula. For example, to use the natural log of the temperature, we can create the formula `rate ~ log(temp)`. Since the formula is symbolic by default, literal math can also be applied to the predictors using the identity function `I()`. To use Fahrenheit units, the formula could be `rate ~ I( (temp * 9/5) + 32 )` to convert from Celsius. To do this replaced temp with the whole expression: `I( (temp * 9/5) + 32 ).  Need to be craeful with parentheses.`
+
+    I stands for identity - but not sure why that is used.
+
+    ```{r}
+    lm(rate ~ I((temp*9/5)+32), data = crickets)
+
+    ```
+
+<!-- -->
+
+-   R has many functions that are useful inside of formulas. For example, `poly(x, 3)` adds linear, quadratic, and cubic terms for `x` to the model as main effects. The **splines** package also has several functions to create nonlinear spline terms in the formula. Will try an example later
+
+-   to add species as a factor (predictor) to be considered. Use lm(rate \~ + species)
+
+    ```{r}
+    lm(rate ~ temp + species, crickets)
+
+    ```
+
+-   to add an nteracrion between the two
+
+    ```{r}
+    lm(rate ~ temp + species + temp:species, crickets)
+
+    ```
+
+-   another way to write the above
+
+    ```{r}
+    lm(rate ~ (temp + species)^2, crickets)
+    ```
+
+-   For data sets where there are many predictors, the period shortcut is available. The period represents main effects for all of the columns that are not on the left-hand side of the tilde. Using `~ (.)^3` would add main effects as well as all two- and three-variable interactions to the model.
+
+    ```{r}
+    lm(rate ~ (.)^2, data = crickets )
+
+    ```
+
+Returning to our chirping crickets, let's use a two-way interaction model. In this book, we use the suffix `_fit` for R objects that are fitted models.
+
+```{r}
+interaction_fit <-  lm(rate ~ (temp + species)^2, data = crickets) 
+
+# To print a short summary of the model:
+interaction_fit
+
+```
+
+Before going into any inferential results for this model, the fit should be assessed using diagnostic plots. We can use the `plot()` method for `lm` objects. This method produces a set of four plots for the object, each showing different aspects of the fit.
+
+```{r}
+# Place two plots next to one another:
+par(mfrow = c(1, 2))
+
+# Show residuals vs predicted values:
+plot(interaction_fit, which = 1)
+
+# A normal quantile plot on the residuals:
+plot(interaction_fit, which = 2)
+```
+
+What is which?
+
+`which` selects which plot to be displayed:
+
+1.  A plot of residuals against fitted values
+
+2.  A normal Q-Q plot
+
+3.  A Scale-Location plot of sqrt(\| residuals \|) against fitted values
+
+4.  A plot of Cook's distances versus row labels
+
+5.  A plot of residuals against leverages
+
+6.  A plot of Cook's distances against leverage/(1-leverage)
+
+By default, the first three and 5 are provided.
+
+Check `?plot.lm` in r for more details.
+
+```{r}
+#here are the default plots
+plot(interaction_fit)
+```
+
+```{r}
+?plot.lm
+```
+
+```{r}
+#playing around with display.  2 rows 2 columns for plots
+par(mfrow = c(2, 2))
+#plots 4 default plots
+plot(interaction_fit)
+```
+
+Need to look into these types of plots further.
+
+Our next order of business with the crickets is to assess if the inclusion of the interaction term is necessary. The most appropriate approach for this model is to recompute the model without the interaction term and use the `anova()` method.
+
+```{r}
+# Fit a reduced model:
+main_effect_fit <-  lm(rate ~ temp + species, data = crickets) 
+
+# Compare the two:
+anova(main_effect_fit, interaction_fit)
+
+```
+
+This statistical test generates a p-value of 0.25. This implies that there is a lack of evidence against the null hypothesis that the interaction term is not needed by the model. In other words, there is no statistical difference between the models. For this reason, we will conduct further analysis on the model without the interaction.
+
+Residual plots should be reassessed to make sure that our theoretical assumptions are valid enough to trust the p-values produced by the model (plots not shown here but spoiler alert: they are).
+
+We can use the `summary()` method to inspect the coefficients, standard errors, and p-values of each model term:
+
+```{r}
+summary(main_effect_fit)
+```
+
+Read more about Fstatistics [here](https://en.wikipedia.org/wiki/F-test).
+
+```{r}
+?lm
+
+```
+
+### The broom package for getting data into tidy format
+
+The `broom::tidy()` function, which we use throughout this book, is another tool for standardizing the structure of R objects. It can return many types of R objects in a more usable format. For example, suppose that predictors are being screened based on their correlation to the outcome column. Using `purrr::map()`, the results from `cor.test()` can be returned in a list for each predictor:
+
+```{r}
+
+corr_res <- map(mtcars %>% select(-mpg), cor.test, y = mtcars$mpg)
+
+# The first of ten results in the vector: 
+corr_res[[1]]
+#> 
+#>  Pearson's product-moment correlation
+#> 
+#> data:  .x[[i]] and mtcars$mpg
+#> t = -8.9, df = 30, p-value = 6e-10
+#> alternative hypothesis: true correlation is not equal to 0
+#> 95 percent confidence interval:
+#>  -0.9258 -0.7163
+#> sample estimates:
+#>     cor 
+#> -0.8522
+```
+
+If we want to use these results in a plot, the standard format of hypothesis test results are not very useful. The `tidy()` method can return this as a tibble with standardized names:
+
+```{r}
+library(broom)
+
+tidy(corr_res[[1]])
+#> # A tibble: 1 × 8
+#>   estimate statistic  p.value parameter conf.low conf.high method        alternative
+#>      <dbl>     <dbl>    <dbl>     <int>    <dbl>     <dbl> <chr>         <chr>      
+#> 1   -0.852     -8.92 6.11e-10        30   -0.926    -0.716 Pearson's pr… two.sided
+```
+
+These results can be \"stacked\" and added to a `ggplot()`.
+
+(I'm not sure what stacked means)
+
+```{r}
+corr_res %>% 
+  # Convert each to a tidy format; `map_dfr()` stacks the data frames 
+  map_dfr(tidy, .id = "predictor") %>% 
+  ggplot(aes(x = fct_reorder(predictor, estimate))) + 
+  geom_point(aes(y = estimate)) + 
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = .1) +
+  labs(x = NULL, y = "Correlation with mpg")
+```
+
+```{r}
+?map_dfr
+```

@@ -1,0 +1,103 @@
+---
+title: "Tidymodels in R_tidyverse refresher"
+format: html
+editor: visual
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+1 + 1
+```
+
+You can add options to executable code like this
+
+```{r}
+#| echo: false
+2 * 2
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
+
+## Tidyverse refresher
+
+To demonstrate some syntax, let\'s use tidyverse functions to read in data that could be used in modeling. The data set comes from the city of Chicago\'s data portal and contains daily ridership data for the city\'s elevated train stations. The data set has columns for:
+
+-   the station identifier (numeric)
+
+-   the station name (character)
+
+-   the date (character in `mm/dd/yyyy` format)
+
+-   the day of the week (character)
+
+-   the number of riders (numeric)
+
+Our tidyverse pipeline will conduct the following tasks, in order:
+
+1.  Use the tidyverse package **readr** to read the data from the source website and convert them into a tibble. To do this, the `read_csv()` function can determine the type of data by reading an initial number of rows. Alternatively, if the column names and types are already known, a column specification can be created in R and passed to `read_csv()`.
+
+2.  Filter the data to eliminate a few columns that are not needed (such as the station ID) and change the column `stationname` to `station`. The function `select()` is used for this. When filtering, use either the column names or a **dplyr** selector function. When selecting names, a new variable name can be declared using the argument format `new_name = old_name`.
+
+3.  Convert the date field to the R date format using the `mdy()` function from the **lubridate** package. We also convert the ridership numbers to thousands. Both of these computations are executed using the `dplyr::mutate()` function.
+
+4.  Use the maximum number of rides for each station and day combination. This mitigates the issue of a small number of days that have more than one record of ridership numbers at certain stations. We group the ridership data by station and day, and then summarize within each of the 1999 unique combinations with the maximum statistic.
+
+The tidyverse code for these steps is:
+
+```{r}
+#install tidyverse
+install.packages("tidyverse")
+```
+
+```{r}
+#load required packages
+
+library(tidyverse)
+library(lubridate)
+```
+
+```{r}
+
+#create url variable pointing ti the train data
+
+url <- "https://data.cityofchicago.org/api/views/5neh-572f/rows.csv?accessType=DOWNLOAD&bom=true&format=true"
+```
+
+```{r}
+
+#read in and edit the data
+
+# Step 1: Read in the data.
+all_stations <- read_csv(url)
+
+#have a look
+
+head(all_stations)
+
+  
+ 
+```
+
+```{r}
+ # Step 2: filter columns and rename stationname.  Apparently this can be done using the select function.
+  
+all_stations %>% dplyr::select(station = stationname, date, rides) %>% 
+# Step 3: Convert the character date field to a date encoding.
+# Also, put the data in units of 1K rides
+  
+mutate(date = mdy(date), rides = rides / 1000) %>% 
+  
+# Step 4: Summarize the multiple records using the maximum.
+  
+group_by(date, station) %>% 
+summarize(rides = max(rides), .groups = "drop")
+```
+
+Note: In the summarise function, without .groups = "drop", the data is grouped by date automatically. This prevents that grouping. Actually, it looks the same with and without this part. Need to check into this further.
