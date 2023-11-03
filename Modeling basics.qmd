@@ -40,7 +40,7 @@ data(ames)
 dim(ames)
 #> [1] 2930   74
 
-View(ames)
+#View(ames)
 
 
 ```
@@ -219,6 +219,7 @@ lm_model <-
   linear_reg() %>% 
   set_engine("lm")
 
+
 lm_form_fit <- 
   lm_model %>% 
   # Recall that Sale_Price has been pre-logged
@@ -253,6 +254,20 @@ lm_xy_fit
 #>     -302.97        -2.07         2.71
 ```
 
+The above is demonstrating how to tun a model. First the model is set up:
+
+lm_model \<- linear_reg() %\>% set_engine("lm"). This says to use linear regresssion and to use the lm method. This establishes the "settings" (my word) for how to do the model. lm_form_fit refers to the fact that this method uses a formula y \~ x.
+
+lm_form_fit \<- lm_model %\>% \# Recall that Sale_Price has been pre-logged
+
+fit(Sale_Price \~ Longitude + Latitude, data = ames_train)
+
+This fits the data to the lm model. It feeds the lm model into the fit function, the formula is provided, and the train data is used. Results are saved in lm_form_fit variable.
+
+next the same steps are done using fit_xy. This is a function to fit the model by supplying the x and y values, but doesn't use a formula. The point of this section is to show that both of these give the same result in this case. The result is a parsnip object that contains the results of the modeling.
+
+What are the differences between `fit()` and `fit_xy()`? The `fit_xy()` function always passes the data as is to the underlying model function. It will not create dummy/indicator variables before doing so. When `fit()` is used with a model specification, this almost always means that dummy variables will be created from qualitative predictors. If the underlying function requires a matrix (like glmnet), it will make the matrix. However, if the underlying function uses a formula, `fit()` just passes the formula to that function. We estimate that 99% of modeling functions using formulas make dummy variables. The other 1% include tree-based methods that do not require purely numeric predictors. See Section [7.4](https://www.tmwr.org/workflows#workflow-encoding) for more about using formulas in tidymodels.[↩︎](https://www.tmwr.org/models#fnref15)
+
 ## 6.2 USE THE MODEL RESULTS
 
 Once the model is created and fit, we can use the results in a variety of ways; we might want to plot, print, or otherwise examine the model output. Several quantities are stored in a **parsnip** model object, including the fitted model. This can be found in an element called `fit`, which can be returned using the `extract_fit_engine()` function:
@@ -268,7 +283,7 @@ lm_form_fit %>% extract_fit_engine()
 #>     -302.97        -2.07         2.71
 ```
 
-Normal methods can be applied to this object, such as printing and plotting:
+Normal methods can be applied to this object, such as printing and plotting: Below, the results are piped into the vcov function, which calculates the covariance and generates a cov matrix.
 
 ```{r}
 lm_form_fit %>% extract_fit_engine() %>% vcov()
@@ -316,6 +331,8 @@ Another area where **parsnip** diverges from conventional R modeling functions i
 
 For example, when numeric data are predicted:
 
+The code below is applying the fitted model to a small slize of th eoriginal ames data: rows 1 -5. This is predicting the sale price for these first 5 houses, using the predict function.
+
 ```{r}
 ames_test_small <- ames_test %>% slice(1:5)
 predict(lm_form_fit, new_data = ames_test_small)
@@ -327,6 +344,14 @@ predict(lm_form_fit, new_data = ames_test_small)
 #> 3  5.28
 #> 4  5.27
 #> 5  5.28
+```
+
+Why the leading dot in some of the column names? Some tidyverse and tidymodels arguments and return values contain periods. This is to protect against merging data with duplicate names. There are some data sets that contain predictors named `pred`!
+
+For comparison, here are the actual values ofr the first 5 houses
+
+```{r}
+head(ames$Sale_Price)
 ```
 
 These three rules make it easier to merge predictions with the original data:
