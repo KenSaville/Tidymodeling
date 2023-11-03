@@ -374,9 +374,9 @@ ames_test_small %>%
 
 ## 7.2 WORKFLOW BASICS
 
-The **workflows** package allows the user to bind modeling and preprocessing objects together. Let\'s start again with the Ames data and a simple linear model:
+The **workflows** package allows the user to bind modeling and preprocessing objects together. Let's start again with the Ames data and a simple linear model:
 
-The **workflows** package allows the user to bind modeling and preprocessing objects together. Let\'s start again with the Ames data and a simple linear model:
+The **workflows** package allows the user to bind modeling and preprocessing objects together. Let's start again with the Ames data and a simple linear model:
 
 ```{r}
 library(tidymodels)  # Includes the workflows package
@@ -505,3 +505,141 @@ If you would like the underlying modeling method to do what it would normally do
 In the next chapter, we will look at a more powerful preprocessor (called a *recipe*) that can also be added to a workflow.
 
 ## 7.4 HOW DOES A `workflow()` USE THE FORMULA?
+
+Skipping overnthis part. Seems to complicated for me at the moment. The main gistis how workflows work with multi level models.
+
+## 7.5 CREATING MULTIPLE WORKFLOWS AT ONCE
+
+This section looks interesting. How to generate and compare many different models to find the best one.
+
+In some situations, the data require numerous attempts to find an appropriate model. For example:
+
+-   For predictive models, it is advisable to evaluate a variety of different model types. This requires the user to create multiple model specifications.
+
+-   Sequential testing of models typically starts with an expanded set of predictors. This "full model" is compared to a sequence of the same model that removes each predictor in turn. Using basic hypothesis testing methods or empirical validation, the effect of each predictor can be isolated and assessed.
+
+In these situations, as well as others, it can become tedious or onerous to create a lot of workflows from different sets of preprocessors and/or model specifications. To address this problem, the **workflowset** package creates combinations of workflow components. A list of preprocessors (e.g., formulas, **dplyr** selectors, or feature engineering recipe objects discussed in the next chapter) can be combined with a list of model specifications, resulting in a set of workflows.
+
+As an example, let's say that we want to focus on the different ways that house location is represented in the Ames data. We can create a set of formulas that capture these predictors:
+
+```{r}
+location <- list(
+  longitude = Sale_Price ~ Longitude,
+  latitude = Sale_Price ~ Latitude,
+  coords = Sale_Price ~ Longitude + Latitude,
+  neighborhood = Sale_Price ~ Neighborhood
+)
+```
+
+These representations can be crossed with one or more models using the `workflow_set()` function. We'll just use the previous linear model specification to demonstrate:
+
+```{r}
+library(workflowsets)
+location_models <- workflow_set(preproc = location, models = list(lm = lm_model))
+location_models
+#> # A workflow set/tibble: 4 × 4
+#>   wflow_id        info             option    result    
+#>   <chr>           <list>           <list>    <list>    
+#> 1 longitude_lm    <tibble [1 × 4]> <opts[0]> <list [0]>
+#> 2 latitude_lm     <tibble [1 × 4]> <opts[0]> <list [0]>
+#> 3 coords_lm       <tibble [1 × 4]> <opts[0]> <list [0]>
+#> 4 neighborhood_lm <tibble [1 × 4]> <opts[0]> <list [0]>
+location_models$info[[1]]
+#> # A tibble: 1 × 4
+#>   workflow   preproc model      comment
+#>   <list>     <chr>   <chr>      <chr>  
+#> 1 <workflow> formula linear_reg ""
+extract_workflow(location_models, id = "coords_lm")
+#> ══ Workflow ═════════════════════════════════════════════════════════════════════════
+#> Preprocessor: Formula
+#> Model: linear_reg()
+#> 
+#> ── Preprocessor ─────────────────────────────────────────────────────────────────────
+#> Sale_Price ~ Longitude + Latitude
+#> 
+#> ── Model ────────────────────────────────────────────────────────────────────────────
+#> Linear Regression Model Specification (regression)
+#> 
+#> Computational engine: lm
+```
+
+```{r}
+#Extract the neighborhood model instead
+
+extract_workflow(location_models, id = "neighborhood_lm")
+```
+
+Workflow sets are mostly designed to work with resampling, which is discussed in Chapter [10](https://www.tmwr.org/resampling#resampling). The columns `option` and `result` must be populated with specific types of objects that result from resampling. We will demonstrate this in more detail in Chapters [11](https://www.tmwr.org/compare#compare) and [15](https://www.tmwr.org/workflow-sets#workflow-sets).
+
+In the meantime, let's create model fits for each formula and save them in a new column called `fit`. We'll use basic **dplyr** and **purrr** operations:
+
+below:
+
+location models is the workflow set that contains the 4 models.
+
+info is a list within location models that contains info on each model.
+
+mutate will create a new column (called fit) in location \_models
+
+the fit function will fit ames_train data to each model
+
+map applies this fit function to each model
+
+not sure what .x\$workflow\[\[1\]\] refers to. But here's what I'm thinking : It is referring to the model to be fit in each case. I believe it is in location_models\$info\$workflow, first column. But I can't seem to access that directly. So location_models\$info is a list of 4 tibbles. each one has three columns: workflow, preproc, and model
+
+map must automatically iterate over each element of the info list.
+
+.x\$workflow refers to the workflow column in the info list (one for each of our models)
+
+each workflow column itself contains a list. workflow\[\[1\]\] refers to the first element of that list.
+
+workflow\[\[1\]\] must refer to the specific formula for each different model
+
+```{r}
+location_models <-
+   location_models %>%
+   mutate(fit = map(info, ~ fit(.x$workflow[[1]], ames_train)))
+location_models
+
+location_models$fit[[3]] #this accesses the fit result for each model (in this case model 3)
+
+```
+
+## 7.6 EVALUATING THE TEST SET
+
+Let's say that we've concluded our model development and have settled on a final model. There is a convenience function called `last_fit()` that will *fit* the model to the entire training set and *evaluate* it with the testing set.
+
+Using `lm_wflow` as an example, we can pass the model and the initial training/testing split to the function:
+
+so last_fit refers to the fact that this is the last step (as opposed to last as the most recent fit). It is fitting on the spli out training data and testing on the test data.
+
+```{r}
+final_lm_res <- last_fit(lm_wflow, ames_split)
+final_lm_res
+#> # Resampling results
+#> # Manual resampling 
+#> # A tibble: 1 × 6
+#>   splits             id               .metrics .notes   .predictions .workflow 
+#>   <list>             <chr>            <list>   <list>   <list>       <list>    
+#> 1 <split [2342/588]> train/test split <tibble> <tibble> <tibble>     <workflow>
+
+```
+
+The `.workflow` column contains the fitted workflow and can be pulled out of the results using:
+
+```{r}
+fitted_lm_wflow <- extract_workflow(final_lm_res)
+```
+
+Similarly, `collect_metrics()` and `collect_predictions()` provide access to the performance metrics and predictions, respectively.
+
+```{r}
+collect_metrics(final_lm_res)
+collect_predictions(final_lm_res) %>% slice(1:5)
+```
+
+## 7.7 CHAPTER SUMMARY
+
+In this chapter, you learned that the modeling process encompasses more than just estimating the parameters of an algorithm that connects predictors to an outcome. This process also includes preprocessing steps and operations taken after a model is fit. We introduced a concept called a *model workflow* that can capture the important components of the modeling process. Multiple workflows can also be created inside of a *workflow set*. The `last_fit()` function is convenient for fitting a final model to the training set and evaluating with the test set.
+
+For the Ames data, the related code that we\'ll see used again is:
